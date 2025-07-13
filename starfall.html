@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Falling Stars Visualization</title>
+    <style>
+      body {
+        margin: 0;
+        overflow: hidden;
+        background: #000000;
+        font-family: Arial, sans-serif;
+      }
+      canvas {
+        display: block;
+      }
+      .info {
+        position: absolute;
+        bottom: 20px;
+        width: 100%;
+        text-align: center;
+        color: rgba(255, 255, 255, 0.7);
+        font-size: 14px;
+        pointer-events: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="info">Look around • Scroll to zoom • Right-click to pan</div>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/build/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/controls/OrbitControls.js"></script>
+    <script>
+      // Initialize scene, camera, and renderer
+      const scene = new THREE.Scene();
+      const camera = new THREE.PerspectiveCamera(
+        75,
+        window.innerWidth / window.innerHeight,
+        0.1,
+        1000
+      );
+      const renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.setClearColor(0x000000);
+      document.body.appendChild(renderer.domElement);
+
+      // Add orbit controls
+      const controls = new THREE.OrbitControls(camera, renderer.domElement);
+      controls.enableDamping = true;
+      controls.dampingFactor = 0.05;
+      controls.minDistance = 50;
+      controls.maxDistance = 200;
+
+      // Camera position
+      camera.position.set(0, 0, 100);
+
+      // Create dense star field with round points
+      const createStarField = (count) => {
+        const geometry = new THREE.BufferGeometry();
+        const positions = new Float32Array(count * 3);
+        const sizes = new Float32Array(count);
+
+        // Create stars in a sphere shape
+        const radius = 150;
+
+        for (let i = 0; i < count; i++) {
+          const i3 = i * 3;
+
+          // Random position in sphere
+          let x, y, z;
+          do {
+            x = (Math.random() - 0.5) * 2 * radius;
+            y = (Math.random() - 0.5) * 2 * radius;
+            z = (Math.random() - 0.5) * 2 * radius;
+          } while (x * x + y * y + z * z > radius * radius);
+
+          positions[i3] = x;
+          positions[i3 + 1] = y;
+          positions[i3 + 2] = z;
+
+          // Random sizes
+          sizes[i] = Math.random() * 0.5 + 0.5;
+        }
+
+        geometry.setAttribute(
+          "position",
+          new THREE.BufferAttribute(positions, 3)
+        );
+        geometry.setAttribute("size", new THREE.BufferAttribute(sizes, 1));
+
+        // Create round points material
+        const canvas = document.createElement("canvas");
+        canvas.width = 32;
+        canvas.height = 32;
+        const context = canvas.getContext("2d");
+        const gradient = context.createRadialGradient(16, 16, 0, 16, 16, 16);
+        gradient.addColorStop(0, "rgba(255,255,255,1)");
+        gradient.addColorStop(0.5, "rgba(255,255,255,0.5)");
+        gradient.addColorStop(1, "rgba(255,255,255,0)");
+        context.fillStyle = gradient;
+        context.fillRect(0, 0, 32, 32);
+
+        const texture = new THREE.CanvasTexture(canvas);
+        const material = new THREE.PointsMaterial({
+          color: 0xffffff,
+          size: 1.5,
+          transparent: true,
+          opacity: 0.8,
+          sizeAttenuation: true,
+          map: texture,
+          alphaTest: 0.01,
+          blending: THREE.AdditiveBlending,
+        });
+
+        const stars = new THREE.Points(geometry, material);
+
+        // Store original positions for falling stars
+        stars.userData.originalPositions = positions.slice();
+
+        return stars;
+      };
+
+      const starField = createStarField(5000);
+      scene.add(starField);
+
+      // Falling stars system with varied trajectories
+      const fallingStars = [];
+      const createFallingStar = () => {
+        // Select a random star from the star field
+        const positions = starField.geometry.attributes.position.array;
+        const originalPositions = starField.userData.originalPositions;
+        const starIndex = Math.floor(Math.random() * (positions.length / 3));
+
+        // Only select stars that haven't fallen yet
+        if (
+          positions[starIndex * 3] !== originalPositions[starIndex * 3] ||
+          positions[starIndex * 3 + 1] !==
+            originalPositions[starIndex * 3 + 1] ||
+          positions[starIndex * 3 + 2] !== originalPositions[starIndex * 3 + 2]
+        ) {
+          return null;
+        }
+
+        // Random direction (not just downward)
+        const angle = Math.random() * Math.PI * 2; // Random horizontal angle
+        const tilt = ((Math.random() - 0.5) * Math.PI) / 4; // Slight random tilt (-22.5° to +22.5°)
+
+        const direction = new THREE.Vector3(
+          Math.sin(angle) * Math.cos(tilt),
+          -Math.abs(Math.cos(angle) * Math.cos(tilt)), // Mostly downward
+          Math.sin(tilt)
+        ).normalize();
+
+        const star = {
+          index: starIndex,
+          speed: 0.5 + Math.random() * 2,
+          life: 100 + Math.random() * 50,
+          maxLife: 100 + Math.random() * 50,
+          tailLength: 5 + Math.random() * 10,
+          direction: direction,
+          tail: [],
+        };
+
+        // Create tail particles
+        for (let i = 0; i < star.tailLength; i++) {
+          star.tail.push({
+            distance: i * 0.5,
+            opacity: 1 - i / star.tailLength,
+          });
+        }
+
+        return star;
+      };
+
+      // Lighting
+      const ambientLight = new THREE.AmbientLight(0x404040, 0.5);
+      scene.add(ambientLight);
+
+      // Animation
+      function animate() {
+        requestAnimationFrame(animate);
+
+        // Randomly create new falling stars
+        if (Math.random() > 0.97 && fallingStars.length < 30) {
+          const newStar = createFallingStar();
+          if (newStar) {
+            fallingStars.push(newStar);
+          }
+        }
+
+        // Update star field and falling stars
+        const positions = starField.geometry.attributes.position.array;
+        const originalPositions = starField.userData.originalPositions;
+
+        for (let i = fallingStars.length - 1; i >= 0; i--) {
+          const star = fallingStars[i];
+          star.life--;
+
+          if (star.life <= 0) {
+            // Reset star position
+            const i3 = star.index * 3;
+            positions[i3] = originalPositions[i3];
+            positions[i3 + 1] = originalPositions[i3 + 1];
+            positions[i3 + 2] = originalPositions[i3 + 2];
+            fallingStars.splice(i, 1);
+            continue;
+          }
+
+          // Update main star position
+          const i3 = star.index * 3;
+          positions[i3] += star.direction.x * star.speed;
+          positions[i3 + 1] += star.direction.y * star.speed;
+          positions[i3 + 2] += star.direction.z * star.speed;
+
+          // Update tail particles (visual only - positions are calculated in shader)
+          for (let j = 0; j < star.tail.length; j++) {
+            const tailParticle = star.tail[j];
+            tailParticle.opacity =
+              (star.life / star.maxLife) * (1 - j / star.tail.length);
+          }
+        }
+
+        // Mark positions as changed
+        starField.geometry.attributes.position.needsUpdate = true;
+
+        controls.update();
+        renderer.render(scene, camera);
+      }
+
+      animate();
+
+      // Handle window resize
+      window.addEventListener("resize", function () {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+      });
+    </script>
+  </body>
+</html>
