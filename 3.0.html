@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Enhanced 3D Word Cloud</title>
+    <style>
+      body {
+        margin: 0;
+        overflow: hidden;
+        background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+        font-family: Arial, sans-serif;
+      }
+      canvas {
+        display: block;
+      }
+      .info {
+        position: absolute;
+        bottom: 20px;
+        width: 100%;
+        text-align: center;
+        color: rgba(255, 255, 255, 0.7);
+        font-size: 14px;
+        pointer-events: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="info">Drag to rotate • Scroll to zoom • Right-click to pan</div>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/build/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/controls/OrbitControls.js"></script>
+    <script>
+      // Initialize scene, camera, and renderer
+      const scene = new THREE.Scene();
+      const camera = new THREE.PerspectiveCamera(
+        75,
+        window.innerWidth / window.innerHeight,
+        0.1,
+        1000
+      );
+      const renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.setClearColor(0x000000);
+      renderer.shadowMap.enabled = true;
+      document.body.appendChild(renderer.domElement);
+
+      // Add orbit controls
+      const controls = new THREE.OrbitControls(camera, renderer.domElement);
+      controls.enableDamping = true;
+      controls.dampingFactor = 0.05;
+      controls.minDistance = 20;
+      controls.maxDistance = 100;
+
+      // Camera position
+      camera.position.set(0, 0, 50);
+
+      // Words data with categories
+      const wordData = {
+        Languages: [
+          { text: "JavaScript", size: 5, color: 0xff5555 },
+          { text: "Python", size: 4.5, color: 0xff8555 },
+          { text: "TypeScript", size: 4, color: 0xffaa55 },
+          { text: "Java", size: 3.8, color: 0xffcc55 },
+        ],
+        Frameworks: [
+          { text: "React", size: 4.5, color: 0x55ff55 },
+          { text: "Vue", size: 4, color: 0x55cc55 },
+          { text: "Angular", size: 3.8, color: 0x55aa55 },
+          { text: "Node.js", size: 4.2, color: 0x558855 },
+        ],
+        Tools: [
+          { text: "VS Code", size: 4, color: 0x5555ff },
+          { text: "Git", size: 4.2, color: 0x5588ff },
+          { text: "Docker", size: 3.8, color: 0x55aaff },
+          { text: "Webpack", size: 3.5, color: 0x55ccff },
+        ],
+      };
+
+      // Create word groups for each category
+      const categoryGroups = {};
+      const mainGroup = new THREE.Group();
+      scene.add(mainGroup);
+
+      // Load font
+      const fontLoader = new THREE.FontLoader();
+      fontLoader.load(
+        "https://cdn.jsdelivr.net/npm/three@0.132.2/examples/fonts/helvetiker_regular.typeface.json",
+        function (font) {
+          // Create spheres for each category
+          const categoryPositions = [
+            { x: -25, y: 15, z: 0 }, // Languages
+            { x: 25, y: 15, z: 0 }, // Frameworks
+            { x: 0, y: -15, z: 0 }, // Tools
+          ];
+
+          let categoryIndex = 0;
+          for (const [category, words] of Object.entries(wordData)) {
+            // Create group for this category
+            const categoryGroup = new THREE.Group();
+            categoryGroups[category] = categoryGroup;
+
+            // Position category group
+            const pos = categoryPositions[categoryIndex++];
+            categoryGroup.position.set(pos.x, pos.y, pos.z);
+
+            // Add category title
+            const titleGeometry = new THREE.TextGeometry(category, {
+              font: font,
+              size: 2,
+              height: 0.2,
+            });
+            const titleMaterial = new THREE.MeshPhongMaterial({
+              color: 0xffffff,
+            });
+            const titleMesh = new THREE.Mesh(titleGeometry, titleMaterial);
+            titleGeometry.computeBoundingBox();
+            const titleWidth =
+              titleGeometry.boundingBox.max.x - titleGeometry.boundingBox.min.x;
+            titleMesh.position.set(-titleWidth / 2, 10, 0);
+            categoryGroup.add(titleMesh);
+
+            // Add words in spherical distribution
+            const radius = 8;
+            const angleStep = (Math.PI * 2) / words.length;
+
+            words.forEach((word, i) => {
+              const textGeometry = new THREE.TextGeometry(word.text, {
+                font: font,
+                size: word.size,
+                height: 0.5,
+                curveSegments: 4,
+                bevelEnabled: true,
+                bevelThickness: 0.1,
+                bevelSize: 0.1,
+              });
+
+              const textMaterial = new THREE.MeshPhongMaterial({
+                color: word.color,
+                specular: 0x111111,
+                shininess: 30,
+                flatShading: true,
+              });
+
+              const textMesh = new THREE.Mesh(textGeometry, textMaterial);
+
+              // Position in sphere
+              const angle = angleStep * i;
+              const verticalAngle = Math.PI * 0.3;
+              textMesh.position.x =
+                radius * Math.sin(angle) * Math.cos(verticalAngle);
+              textMesh.position.y =
+                radius * Math.sin(angle) * Math.sin(verticalAngle);
+              textMesh.position.z = radius * Math.cos(angle);
+
+              // Rotate to face outward
+              textMesh.lookAt(categoryGroup.position);
+
+              // Add subtle rotation for visual interest
+              textMesh.userData.rotationSpeed = {
+                x: Math.random() * 0.01 - 0.005,
+                y: Math.random() * 0.01 - 0.005,
+              };
+
+              categoryGroup.add(textMesh);
+            });
+
+            mainGroup.add(categoryGroup);
+          }
+        }
+      );
+
+      // Lighting
+      const ambientLight = new THREE.AmbientLight(0x404040, 0.5);
+      scene.add(ambientLight);
+
+      const directionalLight1 = new THREE.DirectionalLight(0xffffff, 0.8);
+      directionalLight1.position.set(1, 1, 1);
+      directionalLight1.castShadow = true;
+      scene.add(directionalLight1);
+
+      const directionalLight2 = new THREE.DirectionalLight(0xffffff, 0.5);
+      directionalLight2.position.set(-1, -1, -1);
+      scene.add(directionalLight2);
+
+      const hemisphereLight = new THREE.HemisphereLight(
+        0xffffbb,
+        0x080820,
+        0.3
+      );
+      scene.add(hemisphereLight);
+
+      // Add subtle background elements
+      const addStars = () => {
+        const starsGeometry = new THREE.BufferGeometry();
+        const starCount = 1000;
+        const positions = new Float32Array(starCount * 3);
+
+        for (let i = 0; i < starCount; i++) {
+          const i3 = i * 3;
+          positions[i3] = (Math.random() - 0.5) * 2000;
+          positions[i3 + 1] = (Math.random() - 0.5) * 2000;
+          positions[i3 + 2] = (Math.random() - 0.5) * 2000;
+        }
+
+        starsGeometry.setAttribute(
+          "position",
+          new THREE.BufferAttribute(positions, 3)
+        );
+
+        const starsMaterial = new THREE.PointsMaterial({
+          color: 0xffffff,
+          size: 1,
+          transparent: true,
+          opacity: 0.8,
+        });
+
+        const stars = new THREE.Points(starsGeometry, starsMaterial);
+        scene.add(stars);
+      };
+      addStars();
+
+      // Animation
+      function animate() {
+        requestAnimationFrame(animate);
+
+        // Rotate main group slowly
+        mainGroup.rotation.y += 0.001;
+
+        // Add subtle individual word movements
+        for (const categoryGroup of Object.values(categoryGroups)) {
+          categoryGroup.children.forEach((child) => {
+            if (child.userData.rotationSpeed) {
+              child.rotation.x += child.userData.rotationSpeed.x;
+              child.rotation.y += child.userData.rotationSpeed.y;
+            }
+          });
+        }
+
+        controls.update();
+        renderer.render(scene, camera);
+      }
+
+      animate();
+
+      // Handle window resize
+      window.addEventListener("resize", function () {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+      });
+    </script>
+  </body>
+</html>
