@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>3D Globe Visualization</title>
+    <style>
+      body {
+        margin: 0;
+        overflow: hidden;
+        background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+        font-family: Arial, sans-serif;
+      }
+      canvas {
+        display: block;
+      }
+      .info {
+        position: absolute;
+        bottom: 20px;
+        width: 100%;
+        text-align: center;
+        color: rgba(255, 255, 255, 0.7);
+        font-size: 14px;
+        pointer-events: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="info">Drag to rotate • Scroll to zoom • Right-click to pan</div>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/build/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/controls/OrbitControls.js"></script>
+    <script>
+      // Initialize scene, camera, and renderer
+      const scene = new THREE.Scene();
+      const camera = new THREE.PerspectiveCamera(
+        75,
+        window.innerWidth / window.innerHeight,
+        0.1,
+        1000
+      );
+      const renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.setClearColor(0x000000);
+      renderer.shadowMap.enabled = true;
+      document.body.appendChild(renderer.domElement);
+
+      // Add orbit controls
+      const controls = new THREE.OrbitControls(camera, renderer.domElement);
+      controls.enableDamping = true;
+      controls.dampingFactor = 0.05;
+      controls.minDistance = 5;
+      controls.maxDistance = 30;
+
+      // Camera position
+      camera.position.set(0, 0, 15);
+
+      // Parameters for the globe
+      const radius = 5;
+      const segments = 36;
+      const rings = 8;
+      const points = [];
+
+      // Create points for the globe
+      const northPole = new THREE.Vector3(0, radius, 0);
+      const southPole = new THREE.Vector3(0, -radius, 0);
+      points.push(northPole);
+
+      for (let j = 1; j < rings; j++) {
+        const phi = (j / rings) * Math.PI;
+        for (let i = 0; i < segments; i++) {
+          const theta = (i / segments) * Math.PI * 2;
+          const x = radius * Math.sin(phi) * Math.cos(theta);
+          const y = radius * Math.cos(phi);
+          const z = radius * Math.sin(phi) * Math.sin(theta);
+          points.push(new THREE.Vector3(x, y, z));
+        }
+      }
+      points.push(southPole);
+
+      // Draw points (white)
+      const geometryPoints = new THREE.BufferGeometry().setFromPoints(points);
+      const materialPoints = new THREE.PointsMaterial({
+        color: 0xffffff,
+        size: 0.1,
+      });
+      const pointCloud = new THREE.Points(geometryPoints, materialPoints);
+      scene.add(pointCloud);
+
+      // Draw RADIAL lines (meridian) - white
+      const radialGeometry = new THREE.BufferGeometry();
+      const radialPositions = [];
+
+      for (let i = 0; i < segments; i++) {
+        const pointIndex = 1 + i;
+        radialPositions.push(
+          northPole.x,
+          northPole.y,
+          northPole.z,
+          points[pointIndex].x,
+          points[pointIndex].y,
+          points[pointIndex].z
+        );
+      }
+
+      for (let j = 0; j < rings - 2; j++) {
+        for (let i = 0; i < segments; i++) {
+          const currentIndex = 1 + j * segments + i;
+          const nextIndex = 1 + (j + 1) * segments + i;
+          radialPositions.push(
+            points[currentIndex].x,
+            points[currentIndex].y,
+            points[currentIndex].z,
+            points[nextIndex].x,
+            points[nextIndex].y,
+            points[nextIndex].z
+          );
+        }
+      }
+
+      const lastRingStart = 1 + (rings - 2) * segments;
+      for (let i = 0; i < segments; i++) {
+        const pointIndex = lastRingStart + i;
+        radialPositions.push(
+          points[pointIndex].x,
+          points[pointIndex].y,
+          points[pointIndex].z,
+          southPole.x,
+          southPole.y,
+          southPole.z
+        );
+      }
+
+      radialGeometry.setAttribute(
+        "position",
+        new THREE.Float32BufferAttribute(radialPositions, 3)
+      );
+      const radialMaterial = new THREE.LineBasicMaterial({
+        color: 0xffffff,
+        transparent: true,
+        opacity: 0.7,
+        linewidth: 1,
+      });
+      const radialLines = new THREE.LineSegments(
+        radialGeometry,
+        radialMaterial
+      );
+      scene.add(radialLines);
+
+      // Draw LATITUDE lines (parallel) - white
+      const latitudeGeometry = new THREE.BufferGeometry();
+      const latitudePositions = [];
+
+      for (let j = 1; j < rings - 1; j++) {
+        const ringStart = 1 + (j - 1) * segments;
+        for (let i = 0; i < segments; i++) {
+          const currentIndex = ringStart + i;
+          const nextIndex = ringStart + ((i + 1) % segments);
+          latitudePositions.push(
+            points[currentIndex].x,
+            points[currentIndex].y,
+            points[currentIndex].z,
+            points[nextIndex].x,
+            points[nextIndex].y,
+            points[nextIndex].z
+          );
+        }
+      }
+
+      latitudeGeometry.setAttribute(
+        "position",
+        new THREE.Float32BufferAttribute(latitudePositions, 3)
+      );
+      const latitudeMaterial = new THREE.LineBasicMaterial({
+        color: 0xffffff,
+        transparent: true,
+        opacity: 0.5,
+        linewidth: 1,
+      });
+      const latitudeLines = new THREE.LineSegments(
+        latitudeGeometry,
+        latitudeMaterial
+      );
+      scene.add(latitudeLines);
+
+      // Glow effect
+      const glowGeometry = new THREE.SphereGeometry(radius * 1.02, 32, 32);
+      const glowMaterial = new THREE.MeshBasicMaterial({
+        color: 0xffffff,
+        transparent: true,
+        opacity: 0.05,
+        side: THREE.BackSide,
+      });
+      const glow = new THREE.Mesh(glowGeometry, glowMaterial);
+      scene.add(glow);
+
+      // Lighting
+      const ambientLight = new THREE.AmbientLight(0x404040, 0.5);
+      scene.add(ambientLight);
+
+      const directionalLight1 = new THREE.DirectionalLight(0xffffff, 0.8);
+      directionalLight1.position.set(1, 1, 1);
+      directionalLight1.castShadow = true;
+      scene.add(directionalLight1);
+
+      const directionalLight2 = new THREE.DirectionalLight(0xffffff, 0.5);
+      directionalLight2.position.set(-1, -1, -1);
+      scene.add(directionalLight2);
+
+      const hemisphereLight = new THREE.HemisphereLight(
+        0xffffbb,
+        0x080820,
+        0.3
+      );
+      scene.add(hemisphereLight);
+
+      // Add subtle background elements (stars)
+      const addStars = () => {
+        const starsGeometry = new THREE.BufferGeometry();
+        const starCount = 1000;
+        const positions = new Float32Array(starCount * 3);
+
+        for (let i = 0; i < starCount; i++) {
+          const i3 = i * 3;
+          positions[i3] = (Math.random() - 0.5) * 2000;
+          positions[i3 + 1] = (Math.random() - 0.5) * 2000;
+          positions[i3 + 2] = (Math.random() - 0.5) * 2000;
+        }
+
+        starsGeometry.setAttribute(
+          "position",
+          new THREE.BufferAttribute(positions, 3)
+        );
+
+        const starsMaterial = new THREE.PointsMaterial({
+          color: 0xffffff,
+          size: 1,
+          transparent: true,
+          opacity: 0.8,
+        });
+
+        const stars = new THREE.Points(starsGeometry, starsMaterial);
+        scene.add(stars);
+      };
+      addStars();
+
+      // Animation
+      function animate() {
+        requestAnimationFrame(animate);
+
+        // Rotate globe slowly
+        pointCloud.rotation.y += 0.002;
+        radialLines.rotation.y += 0.002;
+        latitudeLines.rotation.y += 0.002;
+        glow.rotation.y += 0.001;
+
+        controls.update();
+        renderer.render(scene, camera);
+      }
+
+      animate();
+
+      // Handle window resize
+      window.addEventListener("resize", function () {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+      });
+    </script>
+  </body>
+</html>
